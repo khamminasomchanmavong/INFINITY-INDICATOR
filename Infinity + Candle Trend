@@ -1,0 +1,157 @@
+//@version=5
+indicator("Infinity + Candle Trend", overlay=true)
+
+//====================================================
+// Infinity Trade Inputs
+//====================================================
+Periods      = input.int(title="ATR Period", defval=10)
+src           = input(hl2, title="Source")
+Multiplier    = input.float(title="ATR Multiplier", defval=3.0)
+changeATR     = input.bool(title="Change ATR Calculation Method?", defval=true)
+showsignals   = input.bool(title="Show Buy/Sell Signals?", defval=true)
+highlighting  = input.bool(title="Highlighter On/Off", defval=true)
+barcoloring   = input.bool(title="Bar Coloring On/Off", defval=true)
+
+//====================================================
+// Candle Trend Inputs
+//====================================================
+maSource = input.source(ohlc4, "Trend Source")
+shortMA  = input.int(12, "Short MA")
+longMA   = input.int(26, "Long MA")
+
+//====================================================
+// Infinity Trade Calculation
+//====================================================
+atr2 = ta.sma(ta.atr(14), Periods)
+atr  = changeATR ? ta.atr(Periods) : atr2
+
+up = src - (Multiplier * atr)
+up1 = nz(up[1], up)
+up := close[1] > up1 ? math.max(up, up1) : up
+
+dn = src + (Multiplier * atr)
+dn1 = nz(dn[1], dn)
+dn := close[1] < dn1 ? math.min(dn, dn1) : dn
+
+var int trend = 1
+trend := nz(trend[1], 1)
+trend := trend == -1 and close > dn1 ? 1 :
+         trend == 1 and close < up1 ? -1 :
+         trend
+
+buySignal  = trend == 1 and trend[1] == -1
+sellSignal = trend == -1 and trend[1] == 1
+
+//====================================================
+// Candle Trend Calculation
+//====================================================
+AP   = ta.ema(maSource, 2)
+Fast = ta.ema(AP, shortMA)
+Slow = ta.ema(AP, longMA)
+
+//====================================================
+// Candle Color Logic
+//====================================================
+bullCandle = trend == 1 and Fast > Slow and AP > Fast
+bearCandle = trend == -1 and Fast < Slow and AP < Fast
+
+candleColor =
+     bullCandle ? color.lime :
+     bearCandle ? color.red :
+     color.yellow
+
+barcolor(barcoloring ? candleColor : na)
+
+//====================================================
+// Original SMA Filters
+//====================================================
+sma1 = ta.sma(close, 100)
+sma2 = ta.sma(close, 200)
+smaH = ta.sma(high, 200)
+smaL = ta.sma(low, 200)
+
+checkorder = true
+
+bearishS =
+     (sellSignal and sma1 < sma2) or
+     (close[2] > sma1[2] and close[1] < sma1[1] and sma1[1] < sma2[1] and
+      (sma1[1] - close[1]) / (open[1] - close[1]) > 0.5) or
+     (close[2] > sma2[2] and close[1] < sma2[1] and sma1[1] < sma2[1] and
+      (sma2[1] - close[1]) / (open[1] - close[1]) > 0.5)
+
+bullishS =
+     (buySignal and sma1 > sma2) or
+     (close[2] < sma1[2] and close[1] > sma1[1] and sma1[1] > sma2[1] and
+      (close[1] - sma1[1]) / (close[1] - open[1]) > 0.5) or
+     (close[2] < sma2[2] and close[1] > sma2[1] and sma1[1] > sma2[1] and
+      (close[1] - sma2[1]) / (close[1] - open[1]) > 0.5)
+
+for i = 1 to 10
+    if bearishS[i] or bullishS[i]
+        checkorder := false
+
+//====================================================
+// SMA Environment
+//====================================================
+envC = plot(sma2, color=color.rgb(0, 188, 212), title="SMA 200")
+envH = plot(smaH, color=color.rgb(0, 188, 212), title="SMA High 200")
+envL = plot(smaL, color=color.rgb(0, 188, 212), title="SMA Low 200")
+
+fill(envH, envL, color=color.rgb(0, 188, 212, 60))
+
+//====================================================
+// Infinity Trend Lines
+//====================================================
+upPlot = plot(
+     trend == 1 ? up : na,
+     title="Infinity Bull Line",
+     color=color.green,
+     linewidth=2, display=display.none)
+
+dnPlot = plot(
+     trend == -1 ? dn : na,
+     title="Infinity Bear Line",
+     color=color.red,
+     linewidth=2, display=display.none)
+
+//====================================================
+// Background Highlight
+//====================================================
+pricePlot = plot(ohlc4, display=display.none)
+
+fill(
+     pricePlot,
+     upPlot,
+     color=highlighting and trend == 1
+     ? color.new(color.green, 90)
+     : na)
+
+fill(
+     pricePlot,
+     dnPlot,
+     color=highlighting and trend == -1
+     ? color.new(color.red, 90)
+     : na)
+
+//====================================================
+// Buy/Sell Signals
+//====================================================
+plotshape(
+     showsignals and bearishS and checkorder ? open : na,
+     title="Sell Signal",
+     style=shape.triangledown,
+     size=size.small,
+     location=location.abovebar,
+     color=color.red,
+     text="Short",
+     textcolor=color.red)
+
+plotshape(
+     showsignals and bullishS and checkorder ? open : na,
+     title="Buy Signal",
+     style=shape.triangleup,
+     size=size.small,
+     location=location.belowbar,
+     color=color.lime,
+     text="Long",
+     textcolor=color.lime)
