@@ -1,0 +1,136 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Elitefuns789
+
+//@version=5
+indicator("Infinity trade", overlay=true)
+
+// === INPUTS ===
+Periods = input(title="ATR Period", defval=10)
+src = input(hl2, title="Source")
+Multiplier = input(title="ATR Multiplier", defval=3.0)
+changeATR= input(title="Change ATR Calculation Method ?", defval=true)
+
+barcoloring = input(title="Bar Coloring On/Off ?", defval=true)
+
+// === EMA + MACD SETTINGS ===
+emaLength = input.int(200, "EMA Length")
+fastLen   = input.int(12, "MACD Fast")
+slowLen   = input.int(26, "MACD Slow")
+signalLen = input.int(9, "MACD Signal")
+
+// === ATR LOGIC ===
+atr2 = ta.sma(ta.atr(14), Periods)
+atr= changeATR ? ta.atr(Periods) : atr2
+
+up=src-(Multiplier*atr)
+up1 = nz(up[1],up)
+up := close[1] > up1 ? math.max(up,up1) : up
+
+dn=src+(Multiplier*atr)
+dn1 = nz(dn[1], dn)
+dn := close[1] < dn1 ? math.min(dn, dn1) : dn
+
+trend = 1
+trend := nz(trend[1], trend)
+trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : trend
+
+buySignal = trend == 1 and trend[1] == -1
+sellSignal = trend == -1 and trend[1] == 1
+
+// === SMA ===
+sma1 = ta.sma(close,100)
+sma2 = ta.sma(close,200)
+smaH = ta.sma(high,200)
+smaL = ta.sma(low,200)
+
+checkorder = true
+
+bearishS = ( sellSignal and sma1 < sma2 ) or 
+           ( close[2] > sma1[2] and close[1]<sma1[1] and sma1[1] < sma2[1] ) or 
+           ( close[2] > sma2[2] and close[1]<sma2[1] and sma1[1] < sma2[1] )
+
+bullishS = ( buySignal and sma1 > sma2 ) or 
+           ( close[2] < sma1[2] and close[1]>sma1[1] and sma1[1] > sma2[1] ) or 
+           ( close[2]< sma2[2] and close[1]>sma2[1] and sma1[1] > sma2[1] )
+
+for i=1 to 10
+    if (bearishS[i] or bullishS[i])
+        checkorder :=false
+
+// === EMA200 + MACD HISTOGRAM ===
+ema200 = ta.ema(close, emaLength)
+[macdLine, signalLine, hist] = ta.macd(close, fastLen, slowLen, signalLen)
+
+aboveEMA = close > ema200
+belowEMA = close < ema200
+
+// === COLOR LOGIC ===
+color candleColor = na
+
+if aboveEMA and hist > 0
+    candleColor := color.green
+else if aboveEMA and hist < 0
+    candleColor := color.yellow
+else if belowEMA and hist < 0
+    candleColor := color.red
+else if belowEMA and hist > 0
+    candleColor := color.yellow
+
+// === TREND START DETECTION ===
+greenStart = candleColor == color.green and candleColor[1] != color.green
+redStart   = candleColor == color.red   and candleColor[1] != color.red
+
+// === ALERTS ===
+alertcondition(greenStart, 
+     title="BUY Signal", 
+     message="🟢 BUY: Bullish Trend Started at {{close}}")
+
+alertcondition(redStart,   
+     title="SELL Signal",   
+     message="🔴 SELL: Bearish Trend Started at {{close}}")
+
+// === PLOTS ===
+envC = plot(sma2,color= color.rgb(0, 188, 212))
+envh = plot(smaH,color= color.rgb(0, 188, 212))
+envl = plot(smaL,color= color.rgb(0, 188, 212))
+fill(envh,envl,color =  color.rgb(0, 188, 212, 60))
+
+plot(ema200, color=color.white, linewidth=2)
+
+// === ORIGINAL SIGNALS (OPTIONAL) ===
+//plotshape(showsignals and bearishS and checkorder?open:na ,
+ //    title="Sell signal",style=shape.triangledown,
+ //    location=location.abovebar,color=color.red,text="Short")
+
+//plotshape(showsignals and bullishS and checkorder?open:na ,
+ //    title="Buy signal",style=shape.triangleup,
+ //    location=location.belowbar,color=color.green,text="Long")
+
+// === NEW BUY/SELL LABELS (TREND START ONLY) ===
+plotshape(greenStart,
+     title="BUY Label",
+     style=shape.labelup,
+     location=location.belowbar,
+     color=color.green,
+     text="BUY",
+     textcolor=color.white,
+     size=size.tiny)
+
+plotshape(redStart,
+     title="SELL Label",
+     style=shape.labeldown,
+     location=location.abovebar,
+     color=color.red,
+     text="SELL",
+     textcolor=color.white,
+     size=size.tiny)
+
+// === BAR COLOR ===
+barcolor(barcoloring ? candleColor : na)
+
+// === CANDLE OVERLAY (NOT WRAPPED) ===
+plotcandle(open, high, low, close,
+     title="Colored Candles",
+     color = barcoloring ? candleColor : na,
+     wickcolor = barcoloring ? candleColor : na,
+     bordercolor = barcoloring ? candleColor : na)
