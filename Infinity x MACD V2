@@ -1,0 +1,209 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Elitefuns789
+
+//@version=5
+indicator("Infinity trade", overlay=true)
+
+// ============================================
+// VARIABLES (NOT INPUTS)
+// ============================================
+
+// ATR Settings
+Periods = 10
+src = hl2
+Multiplier = 3.0
+changeATR = true
+
+// Display Settings
+showsignals = true
+showTrendSignals = true
+highlighting = true
+barcoloring = true
+
+// EMA + MACD Settings
+emaLength = 200
+fastLen = 12
+slowLen = 26
+signalLen = 9
+
+// ============================================
+// FUNCTIONS
+// ============================================
+
+// Function: Calculate ATR
+calcATR(periods, useAlternate, altPeriod) =>
+    atr2 = ta.sma(ta.atr(altPeriod), periods)
+    useAlternate ? ta.atr(periods) : atr2
+
+// Function: Calculate Supertrend values and signals
+calcSupertrend(source, multiplier, atrValue) =>
+    up = source - (multiplier * atrValue)
+    up1 = nz(up[1], up)
+    up := close[1] > up1 ? math.max(up, up1) : up
+    
+    dn = source + (multiplier * atrValue)
+    dn1 = nz(dn[1], dn)
+    dn := close[1] < dn1 ? math.min(dn, dn1) : dn
+    
+    trend = 1
+    trend := nz(trend[1], trend)
+    trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : trend
+    
+    buySignal = trend == 1 and trend[1] == -1
+    sellSignal = trend == -1 and trend[1] == 1
+    
+    [up, dn, trend, buySignal, sellSignal]
+
+// Function: Calculate SMA envelope
+calcSMAEnvelope(length) =>
+    smaC = ta.sma(close, length)
+    smaH = ta.sma(high, length)
+    smaL = ta.sma(low, length)
+    [smaC, smaH, smaL]
+
+// Function: Check if signal is valid (no recent signals)
+isValidSignal(bearishS, bullishS, lookback) =>
+    valid = true
+    for i = 1 to lookback
+        if bearishS[i] or bullishS[i]
+            valid := false
+    valid
+
+// Function: Calculate original signals
+calcOriginalSignals(buySignal, sellSignal, sma100, sma200) =>
+    bearishS = (sellSignal and sma100 < sma200) or 
+               (close[2] > sma100[2] and close[1] < sma100[1] and sma100[1] < sma200[1] and (sma100[1]-close[1])/(open[1]-close[1]) > 0.5) or 
+               (close[2] > sma200[2] and close[1] < sma200[1] and sma100[1] < sma200[1] and (sma200[1]-close[1])/(open[1]-close[1]) > 0.5)
+    
+    bullishS = (buySignal and sma100 > sma200) or 
+               (close[2] < sma100[2] and close[1] > sma100[1] and sma100[1] > sma200[1] and (close[1]-sma100[1])/(close[1]-open[1]) > 0.5) or 
+               (close[2] < sma200[2] and close[1] > sma200[1] and sma100[1] > sma200[1] and (close[1]-sma200[1])/(close[1]-open[1]) > 0.5)
+    
+    [bearishS, bullishS]
+
+// Function: Calculate EMA and MACD
+calcEMAMACD(emaLen, fast, slow, sig) =>
+    ema = ta.ema(close, emaLen)
+    [macdLine, signalLine, hist] = ta.macd(close, fast, slow, sig)
+    [ema, macdLine, signalLine, hist]
+
+// Function: Determine candle color based on EMA position and MACD histogram
+getCandleColor(isAboveEMA, histValue) =>
+    color result = na
+    if isAboveEMA and histValue > 0
+        result := color.green
+    else if isAboveEMA and histValue < 0
+        result := color.yellow
+    else if not isAboveEMA and histValue < 0
+        result := color.red
+    else if not isAboveEMA and histValue > 0
+        result := color.yellow
+    result
+
+// Function: Detect trend start
+detectTrendStart(currentColor, prevColor, targetColor) =>
+    currentColor == targetColor and prevColor != targetColor
+
+// ============================================
+// MAIN CALCULATIONS
+// ============================================
+
+// ATR Calculation
+atr = calcATR(Periods, changeATR, 14)
+
+// Supertrend Logic
+[up, dn, trend, buySignal, sellSignal] = calcSupertrend(src, Multiplier, atr)
+
+// SMA Envelopes
+[sma100, sma100H, sma100L] = calcSMAEnvelope(100)
+[sma200, sma200H, sma200L] = calcSMAEnvelope(200)
+
+// Original Signals
+[bearishS, bullishS] = calcOriginalSignals(buySignal, sellSignal, sma100, sma200)
+checkorder = isValidSignal(bearishS, bullishS, 10)
+
+// EMA + MACD
+[ema200, macdLine, signalLine, hist] = calcEMAMACD(emaLength, fastLen, slowLen, signalLen)
+aboveEMA = close > ema200
+candleColor = getCandleColor(aboveEMA, hist)
+
+// Trend Start Detection
+greenStart = detectTrendStart(candleColor, candleColor[1], color.green)
+redStart = detectTrendStart(candleColor, candleColor[1], color.red)
+
+// ============================================
+// PLOTS
+// ============================================
+
+// SMA 200 Envelope
+envC = plot(sma200, color=color.rgb(0, 188, 212), title="SMA 200",display=display.none,editable = false)
+envh = plot(sma200H, color=color.rgb(0, 188, 212), title="SMA 200 High")
+envl = plot(sma200L, color=color.rgb(0, 188, 212), title="SMA 200 Low")
+fill(envh, envl, color=color.rgb(0, 188, 212, 60), title="SMA 200 Envelope")
+
+// EMA 200
+plot(ema200, color=color.white, linewidth=2, title="EMA 200",display=display.none,editable = false)
+
+// ============================================
+// SIGNALS
+// ============================================
+
+// Original Signals (Optional)
+plotshape(showsignals and bearishS and checkorder ? open : na,
+     title="Original Sell Signal",
+     style=shape.triangledown,
+     size=size.small,
+     location=location.abovebar,
+     color=color.red,
+     text="Short",
+     textcolor=color.red)
+
+plotshape(showsignals and bullishS and checkorder ? open : na,
+     title="Original Buy Signal",
+     style=shape.triangleup,
+     size=size.small,
+     location=location.belowbar,
+     color=color.green,
+     text="Long",
+     textcolor=color.green)
+
+// Trend Start Signals
+plotshape(showTrendSignals and greenStart,
+     title="BUY Label",
+     style=shape.labelup,
+     location=location.belowbar,
+     color=color.green,
+     text="B",
+     textcolor=color.white,
+     size=size.tiny)
+
+plotshape(showTrendSignals and redStart,
+     title="SELL Label",
+     style=shape.labeldown,
+     location=location.abovebar,
+     color=color.red,
+     text="S",
+     textcolor=color.white,
+     size=size.small)
+
+// ============================================
+// BAR COLORING
+// ============================================
+barcolor(barcoloring ? candleColor : na)
+
+plotcandle(open, high, low, close,
+     title="Colored Candles",
+     color=barcoloring ? candleColor : na,
+     wickcolor=barcoloring ? candleColor : na,
+     bordercolor=barcoloring ? candleColor : na)
+
+// ============================================
+// ALERTS
+// ============================================
+alertcondition(greenStart, 
+     title="BUY Signal", 
+     message="🟢 BUY: Bullish Trend Started at {{close}}")
+
+alertcondition(redStart,   
+     title="SELL Signal",   
+     message="🔴 SELL: Bearish Trend Started at {{close}}")
