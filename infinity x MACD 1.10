@@ -139,7 +139,7 @@ redStart = detectTrendStart(candleColor, candleColor[1], color.red)
 envC = plot(sma200, color=color.rgb(0, 188, 212), title="SMA 200",display=display.none,editable = false)
 envh = plot(sma200H, color=color.rgb(0, 188, 212), title="SMA 200 High",editable = false)
 envl = plot(sma200L, color=color.rgb(0, 188, 212), title="SMA 200 Low",editable = false)
-fill(envh, envl, color=color.rgb(0, 188, 212, 60), title="SMA 200 Envelope")
+fill(envh, envl, color=color.rgb(0, 188, 212, 60), title="SMA 200 Envelope",editable = false)
 
 // EMA 200
 plot(ema200, color=color.white, linewidth=2, title="EMA 200",display=display.none,editable = false)
